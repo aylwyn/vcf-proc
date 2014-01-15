@@ -74,7 +74,7 @@ p.add_option('-c', '--condsamp', default = '', help = 'condition on het in sampl
 p.add_option('--rates', action='store_true', default = False, help = 'output per-individual het and hom-non-ref rates')
 p.add_option('--ratesonly', action='store_true', default = False, help = 'as --rates; suppress per-site output')
 p.add_option('--vars', action='store_true', default = False, help = 'output variant sites only')
-p.add_option('--msmc', action='store_true', default = False, help = 'output msmc-format seg site separations')
+p.add_option('--segsep', action='store_true', default = False, help = 'output seg site separations (e.g. for input to msmc)')
 p.add_option('--alleles', action='store_true', default = False, help = 'output alleles')
 
 opt, args = p.parse_args()
@@ -171,10 +171,10 @@ for line in fin:
 		varvals = varalleles  
 #		print([sitealleles, varvals])
 
-	if opt.msmc:
+	if opt.segsep:
 		pos = int(tok[1])
 		if pos > lastpos:
-			sep += 1
+			sep += 1 # assumes all callable sites are in vcf TODO otherwise sep = pos - lastpos
 		lastpos = pos
 #	ideally use FQ > 0 but vcf-subset doesn't currently adjust this
 #		fq = re.search('FQ=(-?[0-9.]+)', tok[7])
