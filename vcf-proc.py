@@ -75,6 +75,7 @@ p.add_option('--rates', action='store_true', default = False, help = 'output per
 p.add_option('--ratesonly', action='store_true', default = False, help = 'as --rates; suppress per-site output')
 p.add_option('--vars', action='store_true', default = False, help = 'output variant sites only')
 p.add_option('--segsep', action='store_true', default = False, help = 'output seg site separations (e.g. for input to msmc)')
+p.add_option('--replacecalls', default='', help = 'file of replacement records (e.g. phased SNP calls). NOTE: no checking is done to ensure samples match')
 p.add_option('--alleles', action='store_true', default = False, help = 'output alleles')
 
 opt, args = p.parse_args()
@@ -86,6 +87,15 @@ if args:
 else:
 	fin = sys.stdin
 fout = sys.stdout
+
+if opt.replacecalls:
+	reprecord = {}
+	for line in open(opt.replacecalls):
+		if line.startswith('#'):
+			continue
+		tok = line.split()
+		reprecord[tok[0]+tok[1]] = tok[VCF_FIXEDCOLS:]
+
 
 for line in fin:
 #	if not opt.noheader:
@@ -124,6 +134,9 @@ for line in fin:
 		lastchr = tok[0]
 
 	tok = line.split()
+
+	if opt.replacecalls and tok[0]+tok[1] in reprecord:
+		tok[VCF_FIXEDCOLS:] = reprecord[tok[0]+tok[1]]
 	
 	if opt.vars and tok[4] == '.':
 		continue
