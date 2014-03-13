@@ -10,6 +10,7 @@ import re
 from numpy import median
 import logging
 from logging import error, warning, info, debug, critical
+import gzip
 
 loglevel = logging.WARNING
 
@@ -44,9 +45,10 @@ def dipsitetypes(n):
 
 def phases(gt):
 # diploid allele combinations
-	yield(gt)
-	if gt[0] != gt[1]:
-		yield(gt[::-1])
+	yield(gt[0] + gt[2])
+	if gt[1] != '|' and gt[0] != gt[2]:
+#		yield(gt[::-1])
+		yield(gt[2] + gt[0])
 
 def phasecombs(gts, sep = ''):
 # different phase combinations of diploid genotypes in gts 
@@ -59,7 +61,9 @@ def phasecombs(gts, sep = ''):
 			yield(ph)
 
 #test
-tgt = ['AB', 'CD', 'EF']
+tgt = ['A/B', 'C|D', 'E/F']
+assert ','.join(phasecombs(tgt)) == 'ABCDEF,BACDEF,ABCDFE,BACDFE'
+tgt = ['A/B', 'C/D', 'E/F']
 assert ','.join(phasecombs(tgt)) == 'ABCDEF,BACDEF,ABDCEF,BADCEF,ABCDFE,BACDFE,ABDCFE,BADCFE'
 
 #p = optparse.OptionParser(usage = '%prog [file] [--segsites] [--diversity] [-c cond_sample]')
@@ -90,12 +94,24 @@ fout = sys.stdout
 
 if opt.replacecalls:
 	reprecord = {}
-	for line in open(opt.replacecalls):
+	for line in gzip.open(opt.replacecalls):
 		if line.startswith('#'):
 			continue
 		tok = line.split()
-		reprecord[tok[0]+tok[1]] = tok[VCF_FIXEDCOLS:]
+		reprecord[tok[0]+tok[1]] = tok[VCF_FIXEDCOLS-1:]
 
+#	for line in fin:
+#		if line.startswith('#'):
+#			sys.stdout.write(line)
+#			continue
+#		tok = line.split()
+##		print(tok[0]+tok[1])
+#		if tok[0]+tok[1] in reprecord:
+##			print(tok[0]+tok[1])
+#			tok[VCF_FIXEDCOLS-1:] = reprecord[tok[0]+tok[1]]
+#		sys.stdout.write('\t'.join(tok) + '\n')
+#	sys.exit(0)
+	
 
 for line in fin:
 #	if not opt.noheader:
@@ -136,7 +152,7 @@ for line in fin:
 	tok = line.split()
 
 	if opt.replacecalls and tok[0]+tok[1] in reprecord:
-		tok[VCF_FIXEDCOLS:] = reprecord[tok[0]+tok[1]]
+		tok[VCF_FIXEDCOLS-1:] = reprecord[tok[0]+tok[1]]
 	
 	if opt.vars and tok[4] == '.':
 		continue
@@ -168,21 +184,27 @@ for line in fin:
 
 	if (tok[4] == "."):
 		varvals = ['00' for x in tok[VCF_FIXEDCOLS:(VCF_FIXEDCOLS+nsamp)]]
+		vargts = ['0/0' for x in tok[VCF_FIXEDCOLS:(VCF_FIXEDCOLS+nsamp)]]
 		segsite = False
 	else:
 		varvals = [x[0] + x[2] for x in tok[VCF_FIXEDCOLS:(VCF_FIXEDCOLS+nsamp)]]
-##		varvals = [x.split(':')[0].replace('/', '') for x in tok[VCF_FIXEDCOLS:(VCF_FIXEDCOLS+nsamp)]]
+		vargts = [x[0:3] for x in tok[VCF_FIXEDCOLS:(VCF_FIXEDCOLS+nsamp)]]
 #		if sdafilt:
 #			if (varvals[-1] == '01' and varvals.count('00') < nfsamp) or (varvals[-1] == '11' and varvals.count('01')): #exclude lines with sda in last sample
 #				continue
 #	outvals.append('-'.join(varvals[:nfsamp]))
-		segsite = '01' in varvals
+		segsite = False
+		for gt in vargts:
+			if gt[0] != gt[2]:
+				segsite = True
+#		segsite = '01' in varvals
 
 	if opt.alleles: #TODO
 		sitealleles = [tok[3]] + tok[4].split(',')
 		varalleles = [sitealleles[int(x[0])] + sitealleles[int(x[1])] for x in varvals]  
 		varvals = varalleles  
-#		print([sitealleles, varvals])
+		vargts = [sitealleles[int(x[0])] + x[1] + sitealleles[int(x[2])] for x in vargts]  
+#		print([tok[1], sitealleles, vargts])
 
 	if opt.segsep:
 		pos = int(tok[1])
@@ -194,8 +216,8 @@ for line in fin:
 #		if fq > 0: #het
 #		sys.stdout.write(line)
 		if segsite:
-			if len(varvals) > 1: #
-				allstr = ','.join(phasecombs(varvals))
+			if len(vargts) > 1: #
+				allstr = ','.join(phasecombs(vargts))
 				fout.write('\t'.join(outvals + [str(sep)] + [allstr]) + '\n')
 			else:
 				fout.write('\t'.join(outvals + [str(sep)] + varvals) + '\n')
