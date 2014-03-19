@@ -16,7 +16,6 @@ loglevel = logging.WARNING
 
 # defaults
 VCF_FIXEDCOLS = 9
-#HWEMIN = 0.05
 
 #	fout.write('\t'.join([str(x) for x in args]) + '\n')
 
@@ -81,6 +80,7 @@ p.add_option('--vars', action='store_true', default = False, help = 'output vari
 p.add_option('--segsep', action='store_true', default = False, help = 'output seg site separations (e.g. for input to msmc)')
 p.add_option('--replacecalls', default='', help = 'file of replacement records (e.g. phased SNP calls). NOTE: no checking is done to ensure samples match')
 p.add_option('--alleles', action='store_true', default = False, help = 'output alleles')
+p.add_option('--pseudodip', action='store_true', default = False, help = 'create pseudodiploids from consecutive pairs of input samples (assumed haploid so exclude hets)')
 
 opt, args = p.parse_args()
 if opt.ratesonly:
@@ -111,7 +111,6 @@ if opt.replacecalls:
 #			tok[VCF_FIXEDCOLS-1:] = reprecord[tok[0]+tok[1]]
 #		sys.stdout.write('\t'.join(tok) + '\n')
 #	sys.exit(0)
-	
 
 for line in fin:
 #	if not opt.noheader:
@@ -164,10 +163,6 @@ for line in fin:
 #	if len(tok[4]) > 1: # multiallelic sites
 #		continue
 
-#	if nsamp > 1:
-#		if opt.HWEmin > 0.0:
-#			hwep = re.search('HWE=([0-9.e\-]+)', tok[7])
-
 	if opt.condsamp and not tok[condcol].startswith('0/1'): # condition on variant in cond_sample
 		continue
 
@@ -198,6 +193,12 @@ for line in fin:
 			if gt[0] != gt[2]:
 				segsite = True
 #		segsite = '01' in varvals
+
+	if opt.pseudodip:
+		if segsite:
+			continue
+		varvals = [varvals[i][0] + varvals[i+1][0] for i in range(0, len(varvals) - 1, 2)]
+		vargts = [vargts[i][0] + '|' + vargts[i+1][0] for i in range(0, len(vargts) - 1, 2)]
 
 	if opt.alleles: #TODO
 		sitealleles = [tok[3]] + tok[4].split(',')

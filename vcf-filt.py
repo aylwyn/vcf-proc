@@ -20,7 +20,7 @@ p = optparse.OptionParser()
 p.add_option('-H', '--noheader', action='store_true', default = False)
 p.add_option('-d', '--mindep', dest = 'mindeparg', default = '10', help = 'min per-individual raw read depth [%default]')
 p.add_option('-D', '--maxdep', dest = 'maxdeparg', default = '100', help = 'max per-individual raw read depth [%default]')
-p.add_option('--n', '--min_passed', dest = 'minpass', type = 'int', default = -1, help = 'min number of samples passing depth filters [%default]')
+p.add_option('-n', '--min_passed', dest = 'minpass', type = 'float', default = -1.0, help = 'min samples passing depth filters: n < 0: all samples; 0 < n < 1: fraction of samples; n >= 1: number of samples')
 p.add_option('-q', '--Qmin', type = 'float', default = 20.0, help = 'min consensus quality [%default]')
 p.add_option('--MQmin', default = 10, help = 'min r.m.s. mapping quality of covering reads [%default]')
 p.add_option('--MQ0maxfrac', type = 'float', default = 0.25, help = 'max raction of reads with zero mapping quality [%default]')
@@ -51,6 +51,10 @@ for line in fin:
 
 if opt.minpass < 0:
 	opt.minpass = nsamp
+elif opt.minpass > 0 and opt.minpass < 1:
+	opt.minpass = int(opt.minpass * nsamp)
+elif opt.minpass >= 1 and opt.minpass <= nsamp:
+	opt.minpass = int(opt.minpass)
 elif opt.minpass > nsamp:
 	error('%d samples, %d given for min number passing depth filter' % (nsamp, opt.minpass))
 	sys.exit(2)
