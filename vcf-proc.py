@@ -239,13 +239,13 @@ for line in fin:
 
 		while pos > lastpos:
 			if opt.callmask and lastpos in callmask:
-				print('pos = %d; Masking %d to %d' % (pos, lastpos, callmask[lastpos]))
+#				print('pos = %d; Masking %d to %d' % (pos, lastpos, callmask[lastpos]))
 				lastpos = callmask[lastpos]
 			else:
 				sep += 1
 			lastpos += 1
 		if opt.callmask and lastpos in callmask:
-			print('pos = %d; Masking %d to %d' % (pos, lastpos, callmask[lastpos]))
+#			print('pos = %d; Masking %d to %d' % (pos, lastpos, callmask[lastpos]))
 			lastpos = callmask[lastpos] + 1
 		elif lastpos == pos and segsite:
 			if len(vargts) > 1:
