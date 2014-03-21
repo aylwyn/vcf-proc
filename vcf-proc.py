@@ -16,6 +16,8 @@ loglevel = logging.INFO
 
 # defaults
 VCF_FIXEDCOLS = 9
+PSMC_BINSIZE = 100
+PSMC_N_RATIO = 0.9
 
 #	fout.write('\t'.join([str(x) for x in args]) + '\n')
 
@@ -59,6 +61,23 @@ def phasecombs(gts, sep = ''):
 		for ph in phases(gts[0]):
 			yield(ph)
 
+class FastaStream(object):
+    def __init__(self, fh):
+        self.fh = fh
+        self.ccount = 0
+
+    def write(self, c):
+        self.fh.write(c)
+        self.ccount += len(c)
+        if self.ccount >= 60:
+            self.fh.write('\n')
+            self.ccount = 0
+
+    def newrec(self, name):
+        self.fh.write('\n>%s\n' % str(name))
+        self.ccount = 0
+
+
 #test
 tgt = ['A/B', 'C|D', 'E/F']
 assert ','.join(phasecombs(tgt)) == 'ABCDEF,BACDEF,ABCDFE,BACDFE'
@@ -79,6 +98,7 @@ p.add_option('--rates', action='store_true', default = False, help = 'output per
 p.add_option('--ratesonly', action='store_true', default = False, help = 'as --rates; suppress per-site output')
 p.add_option('--vars', action='store_true', default = False, help = 'output variant sites only')
 p.add_option('--segsep', action='store_true', default = False, help = 'output seg site separations (e.g. for input to msmc)')
+p.add_option('--psmcfa', action='store_true', default = False, help = 'output psmcfa (for input to psmc; NOTE psmc only works for two chrs)')
 p.add_option('--replacecalls', default='', help = 'vcf.gz file of replacement records (e.g. phased SNP calls). NOTE: no checking is done to ensure samples match')
 p.add_option('--callmask', default='', help = 'bed.gz file of uncallable regions')
 p.add_option('--alleles', action='store_true', default = False, help = 'output alleles')
@@ -153,18 +173,28 @@ if opt.rates:
 	nsites = 0
 	firstcoord = ''
 
-lastchr = ''
+if opt.psmcfa:
+	faout = FastaStream(sys.stdout)
+
+curchr = ''
 for line in fin:
 	if line.startswith('#'):
 #		sys.stdout.write(line)
 		continue
-	#TODO: handle new chr: reset sep, lastpos
-	if tok[0] != lastchr:
-		sep = 0
-		lastpos = -1
-		lastchr = tok[0]
 
 	tok = line.split()
+
+	if tok[0] != curchr:
+		sep = 0
+		lastpos = 0
+		curchr = tok[0]
+		if opt.psmcfa:
+			nextbin = PSMC_BINSIZE
+			faout = FastaStream(sys.stdout)
+			faout.newrec(curchr)
+			inmask = False
+			nN = 0
+			outchar = 'T'
 
 	if opt.replacecalls and tok[0]+tok[1] in reprecord:
 		tok[VCF_FIXEDCOLS-1:] = reprecord[tok[0]+tok[1]]
@@ -254,6 +284,36 @@ for line in fin:
 			else:
 				fout.write('\t'.join(outvals + [str(sep)] + varvals) + '\n')
 			sep = 0
+		continue
+	elif opt.psmcfa:
+		if segsite:
+			pos = int(tok[1])
+
+			print('site at %d' % pos)
+			while lastpos < nextbin and pos > nextbin - PSMC_BINSIZE:
+				lastpos += 1
+				if opt.callmask and lastpos in callmask:
+					print('Mask %d to %d : %d' % (lastpos, callmask[lastpos], callmask[lastpos]-lastpos + 1))
+					inmask = True
+					endmask = callmask[lastpos]
+				if inmask:
+					nN += 1
+					if lastpos == endmask:
+						inmask = False
+				if lastpos == pos:
+					outchar = 'K'
+				if lastpos == nextbin:
+					if float(nN) / PSMC_BINSIZE > PSMC_N_RATIO:
+						outchar = 'N'
+					faout.write(outchar)
+					print(' %d-%d: %d Ns, pos = %d' % (nextbin - PSMC_BINSIZE + 1, nextbin, nN, pos))
+					nextbin += PSMC_BINSIZE
+					outchar = 'T'
+					nN = 0
+	#		while pos > nextbin - PSMC_BINSIZE:
+	#			faout.write('K')
+	#			nextbin += PSMC_BINSIZE
+	#		lastpos = nextbin
 		continue
 
 	outvals.append('-'.join(varvals))
