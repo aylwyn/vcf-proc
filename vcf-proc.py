@@ -289,11 +289,11 @@ for line in fin:
 		if segsite:
 			pos = int(tok[1])
 
-			print('site at %d' % pos)
+#			print('site at %d' % pos)
 			while lastpos < nextbin and pos > nextbin - PSMC_BINSIZE:
 				lastpos += 1
 				if opt.callmask and lastpos in callmask:
-					print('Mask %d to %d : %d' % (lastpos, callmask[lastpos], callmask[lastpos]-lastpos + 1))
+#					print('Mask %d to %d : %d' % (lastpos, callmask[lastpos], callmask[lastpos]-lastpos + 1))
 					inmask = True
 					endmask = callmask[lastpos]
 				if inmask:
@@ -306,14 +306,10 @@ for line in fin:
 					if float(nN) / PSMC_BINSIZE > PSMC_N_RATIO:
 						outchar = 'N'
 					faout.write(outchar)
-					print(' %d-%d: %d Ns, pos = %d' % (nextbin - PSMC_BINSIZE + 1, nextbin, nN, pos))
+#					print(' %d-%d: %d Ns, pos = %d' % (nextbin - PSMC_BINSIZE + 1, nextbin, nN, pos))
 					nextbin += PSMC_BINSIZE
 					outchar = 'T'
 					nN = 0
-	#		while pos > nextbin - PSMC_BINSIZE:
-	#			faout.write('K')
-	#			nextbin += PSMC_BINSIZE
-	#		lastpos = nextbin
 		continue
 
 	outvals.append('-'.join(varvals))
