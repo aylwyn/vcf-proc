@@ -1,5 +1,5 @@
-#!/software/bin/python
-# Aylwyn Scally 2013
+#!/usr/bin/env python
+# Aylwyn Scally 2014
 #TODO: handle ./. output e.g. from vcf-merge
 
 import sys
