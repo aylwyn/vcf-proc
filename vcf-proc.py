@@ -11,6 +11,7 @@ from numpy import median
 import logging
 from logging import error, warning, info, debug, critical
 import gzip
+from string import maketrans
 
 loglevel = logging.INFO
 
@@ -101,6 +102,7 @@ p.add_option('--segsep', action='store_true', default = False, help = 'output se
 p.add_option('--psmcfa', action='store_true', default = False, help = 'output psmcfa (for input to psmc; NOTE psmc only works for two chrs)')
 p.add_option('--replacecalls', default='', help = 'vcf.gz file of replacement records (e.g. phased SNP calls). NOTE: no checking is done to ensure samples match')
 p.add_option('--callmask', default='', help = 'bed.gz file of uncallable regions')
+p.add_option('--aims', default='', help = 'file of population sample lists (line format: pop sample[,sample ...]); output AIM sites')
 p.add_option('--alleles', action='store_true', default = False, help = 'output alleles')
 p.add_option('--pseudodip', action='store_true', default = False, help = 'create pseudodiploids from consecutive pairs of input samples (assumed haploid so exclude hets)')
 
@@ -139,6 +141,17 @@ if opt.callmask:
 			continue
 		tok = line.split()
 		callmask[int(tok[1]) + 1] = int(tok[2])
+
+if opt.aims:
+	info('Reading sample population assignments from %s' % opt.aims)
+	samppop = {}
+	for line in open(opt.aims):
+		if line.startswith('#'):
+			continue
+		tok = line.split()
+		samppop[tok[0]] = tok[1]
+	#TODO: check all samples assigned
+	opt.vars = True
 
 #	for line in fin:
 #		if line.startswith('#'):
@@ -259,16 +272,42 @@ for line in fin:
 #		if fq > 0: #het
 #		sys.stdout.write(line)
 	valstr = ''.join(varvals)
-#	print(valstr)
+#	debug(valstr)
 	segsite = '0' in valstr and '1' in valstr
-#	print(segsite)
 
 	if opt.alleles:
 		sitealleles = [tok[3]] + tok[4].split(',')
-		varalleles = [sitealleles[int(x[0])] + sitealleles[int(x[1])] for x in varvals]  
+		trtab = maketrans(''.join([str(x) for x in range(len(sitealleles))]), ''.join(sitealleles))
+		varalleles = [x.translate(trtab) for x in varvals]  
+#		varalleles = [sitealleles[int(x[0])] + sitealleles[int(x[1])] for x in varvals]  
 		varvals = varalleles  
-		vargts = [sitealleles[int(x[0])] + x[1] + sitealleles[int(x[2])] for x in vargts]  
-#		print([tok[1], sitealleles, vargts])
+#		vargts = [sitealleles[int(x[0])] + x[1] + sitealleles[int(x[2]) + 1] for x in vargts]  
+		vargts = [x.translate(trtab) for x in vargts]  
+#		debug([tok[1], sitealleles, vargts])
+
+	if opt.aims:
+		valpops = {}
+		popvals = {}
+		for isn, samp in enumerate(sampnames):
+			spop = samppop[samp]
+			for val in varvals[isn]:
+				if val in valpops:
+					valpops[val].add(spop)
+				else:
+					valpops[val] = set([spop])
+				if spop in popvals:
+					popvals[spop].add(val)
+				else:
+					popvals[spop] = set([val])
+		for val in valpops:
+			if len(valpops[val]) == 1: # require uniqueness of marker to pop
+				spop = valpops[val].pop() 
+				if len(popvals[spop]) == 1: # require fixation of marker in pop
+					debug(varvals)
+#					debug(valpops)
+					debug(popvals)
+					fout.write('\t'.join(outvals + [val] + [spop]) + '\n')
+		continue
 
 	if opt.segsep:
 		pos = int(tok[1])
