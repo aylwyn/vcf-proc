@@ -62,20 +62,20 @@ def phasecombs(gts, sep = ''):
 			yield(ph)
 
 class FastaStream(object):
-    def __init__(self, fh):
-        self.fh = fh
-        self.ccount = 0
+	def __init__(self, fh):
+		self.fh = fh
+		self.ccount = 0
 
-    def write(self, c):
-        self.fh.write(c)
-        self.ccount += len(c)
-        if self.ccount >= 60:
-            self.fh.write('\n')
-            self.ccount = 0
+	def write(self, c):
+		self.fh.write(c)
+		self.ccount += len(c)
+		if self.ccount >= 60:
+			self.fh.write('\n')
+			self.ccount = 0
 
-    def newrec(self, name):
-        self.fh.write('\n>%s\n' % str(name))
-        self.ccount = 0
+	def newrec(self, name):
+		self.fh.write('\n>%s\n' % str(name))
+		self.ccount = 0
 
 
 #test
@@ -130,7 +130,11 @@ if opt.replacecalls:
 if opt.callmask:
 	info('Reading uncallable regions from %s' % opt.callmask)
 	callmask = {}
-	for line in gzip.open(opt.callmask):
+	if opt.callmask.endswith('.gz'):
+		cmf = gzip.open(opt.callmask)
+	else:
+		cmf = open(opt.callmask)
+	for line in cmf:
 		if line.startswith('#'):
 			continue
 		tok = line.split()
@@ -243,6 +247,8 @@ for line in fin:
 				break
 		if hetsite:
 			continue
+# combine consecutive varvals elements into new varvals if none are het
+# TODO?: only check/exclude hets in consecutive pairs
 		varvals = [varvals[i][0] + varvals[i+1][0] for i in range(0, len(varvals) - 1, 2)]
 		vargts = [vargts[i][0] + '|' + vargts[i+1][0] for i in range(0, len(vargts) - 1, 2)]
 #		print(vargts)
