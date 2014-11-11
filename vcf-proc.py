@@ -102,7 +102,7 @@ p.add_option('--segsep', action='store_true', default = False, help = 'output se
 p.add_option('--psmcfa', action='store_true', default = False, help = 'output psmcfa (for input to psmc; NOTE psmc only works for two chrs)')
 p.add_option('--replacecalls', default='', help = 'vcf.gz file of replacement records (e.g. phased SNP calls). NOTE: no checking is done to ensure samples match')
 p.add_option('--callmask', default='', help = 'bed.gz file of uncallable regions')
-p.add_option('--aims', default='', help = 'file of population sample lists (line format: pop sample[,sample ...]); output AIM sites')
+p.add_option('--aims', default='', help = 'file of sample population assignments (line format: sample pop); output AIM sites')
 p.add_option('--alleles', action='store_true', default = False, help = 'output alleles')
 p.add_option('--pseudodip', action='store_true', default = False, help = 'create pseudodiploids from consecutive pairs of input samples (assumed haploid so exclude hets)')
 
