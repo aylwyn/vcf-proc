@@ -152,6 +152,8 @@ if opt.aims:
 		samppop[tok[0]] = tok[1]
 	#TODO: check all samples assigned
 	opt.vars = True
+	poplist = list(set(samppop.values()))
+	fout.write('\t'.join(['#chr', 'pos'] + poplist + ['AIM_pop']) + '\n')
 
 #	for line in fin:
 #		if line.startswith('#'):
@@ -306,7 +308,10 @@ for line in fin:
 					debug(varvals)
 #					debug(valpops)
 					debug(popvals)
-					fout.write('\t'.join(outvals + [val] + [spop]) + '\n')
+					spvals = ['/'.join(list(popvals[x])) for x in poplist]
+					debug(spvals)
+					fout.write('\t'.join(outvals + spvals + [spop]) + '\n')
+#					fout.write('\t'.join(outvals + [val] + spvals + [spop]) + '\n')
 		continue
 
 	if opt.segsep:
