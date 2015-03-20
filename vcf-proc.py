@@ -105,6 +105,7 @@ p.add_option('--callmask', default='', help = 'bed.gz file of uncallable regions
 p.add_option('--aims', default='', help = 'file of sample population assignments (line format: sample pop); output AIM sites')
 p.add_option('--alleles', action='store_true', default = False, help = 'output alleles')
 p.add_option('--pseudodip', action='store_true', default = False, help = 'create pseudodiploids from consecutive pairs of input samples (assumed haploid so exclude hets)')
+p.add_option('--haploid', action='store_true', default = False, help = 'haploid input calls')
 
 opt, args = p.parse_args()
 if opt.ratesonly:
@@ -242,31 +243,37 @@ for line in fin:
 
 	outvals = tok[0:2]
 
-	if (tok[4] == "."):
-		varvals = ['00' for x in tok[VCF_FIXEDCOLS:(VCF_FIXEDCOLS+nsamp)]]
-		vargts = ['0/0' for x in tok[VCF_FIXEDCOLS:(VCF_FIXEDCOLS+nsamp)]]
-		segsite = False
+	if opt.haploid:
+		if (tok[4] == "."):
+			varvals = ['0' for x in tok[VCF_FIXEDCOLS:(VCF_FIXEDCOLS+nsamp)]]
+			segsite = False
+		else:
+			varvals = [x[0] for x in tok[VCF_FIXEDCOLS:(VCF_FIXEDCOLS+nsamp)]]
+		vargts = varvals
 	else:
-		varvals = [x[0] + x[2] for x in tok[VCF_FIXEDCOLS:(VCF_FIXEDCOLS+nsamp)]]
-		vargts = [x[0:3] for x in tok[VCF_FIXEDCOLS:(VCF_FIXEDCOLS+nsamp)]]
-#		if sdafilt:
-#			if (varvals[-1] == '01' and varvals.count('00') < nfsamp) or (varvals[-1] == '11' and varvals.count('01')): #exclude lines with sda in last sample
-#				continue
-#	outvals.append('-'.join(varvals[:nfsamp]))
+		if (tok[4] == "."):
+			varvals = ['00' for x in tok[VCF_FIXEDCOLS:(VCF_FIXEDCOLS+nsamp)]]
+			vargts = ['0/0' for x in tok[VCF_FIXEDCOLS:(VCF_FIXEDCOLS+nsamp)]]
+			segsite = False
+		else:
+			varvals = [x[0] + x[2] for x in tok[VCF_FIXEDCOLS:(VCF_FIXEDCOLS+nsamp)]]
+			vargts = [x[0:3] for x in tok[VCF_FIXEDCOLS:(VCF_FIXEDCOLS+nsamp)]]
+
+		if opt.pseudodip:
+			hetsite = False
+			for gt in vargts:
+				if gt[0] != gt[2]:
+					hetsite = True
+					break
+			if hetsite:
+				continue
 
 	if opt.pseudodip:
-		hetsite = False
-		for gt in vargts:
-			if gt[0] != gt[2]:
-				hetsite = True
-				break
-		if hetsite:
-			continue
-# combine consecutive varvals elements into new varvals if none are het
+# combine consecutive varvals elements into new varvals (assumes none are het)
 # TODO?: only check/exclude hets in consecutive pairs
 		varvals = [varvals[i][0] + varvals[i+1][0] for i in range(0, len(varvals) - 1, 2)]
 		vargts = [vargts[i][0] + '|' + vargts[i+1][0] for i in range(0, len(vargts) - 1, 2)]
-#		print(vargts)
+#		debug(vargts)
 
 # determine if segregating site
 # ideally use FQ > 0 but vcf-subset doesn't currently adjust this
@@ -281,9 +288,7 @@ for line in fin:
 		sitealleles = [tok[3]] + tok[4].split(',')
 		trtab = maketrans(''.join([str(x) for x in range(len(sitealleles))]), ''.join(sitealleles))
 		varalleles = [x.translate(trtab) for x in varvals]  
-#		varalleles = [sitealleles[int(x[0])] + sitealleles[int(x[1])] for x in varvals]  
 		varvals = varalleles  
-#		vargts = [sitealleles[int(x[0])] + x[1] + sitealleles[int(x[2]) + 1] for x in vargts]  
 		vargts = [x.translate(trtab) for x in vargts]  
 #		debug([tok[1], sitealleles, vargts])
 
