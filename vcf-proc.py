@@ -6,12 +6,13 @@ import sys
 import optparse
 #import os
 import re
-#import os.path
+import os.path
 from numpy import median
 import logging
 from logging import error, warning, info, debug, critical
 import gzip
 from string import maketrans
+#import difflib
 
 loglevel = logging.INFO
 
@@ -89,7 +90,9 @@ assert ','.join(phasecombs(tgt)) == 'ABCDEF,BACDEF,ABDCEF,BADCEF,ABCDFE,BACDFE,A
 p = optparse.OptionParser()
 p.add_option('-H', '--header', action='store_true', default = False)
 p.add_option('--debug', action='store_true', default = False)
-p.add_option('--depths', action='store_true', default = False, help = 'output per-individual read depths')
+p.add_option('--depths', action='store_true', default = False, help = 'include read depths in rates')
+p.add_option('--depthsonly', action='store_true', default = False, help = 'output per-individual read depths only')
+p.add_option('--no_calls', action='store_true', default = False, help = 'suppress output of calls')
 p.add_option('--indels', action='store_true', default = False, help = 'include indels')
 p.add_option('--segsites', action='store_true', default = False, help = 'output segregating site flag')
 p.add_option('--mediandep', action='store_true', default = False, help = 'output median read depth')
@@ -102,12 +105,17 @@ p.add_option('--segsep', action='store_true', default = False, help = 'output se
 p.add_option('--psmcfa', action='store_true', default = False, help = 'output psmcfa (for input to psmc; NOTE psmc only works for two chrs)')
 p.add_option('--replacecalls', default='', help = 'vcf.gz file of replacement records (e.g. phased SNP calls). NOTE: no checking is done to ensure samples match')
 p.add_option('--callmask', default='', help = 'bed.gz file of uncallable regions')
-p.add_option('--aims', default='', help = 'file of sample population assignments (line format: sample pop); output AIM sites')
+p.add_option('--pops', default='', help = 'file of sample population assignments (line format: sample pop)')
+p.add_option('--aims', action='store_true', default = False, help = 'output AIM sites (requires --pops)')
 p.add_option('--alleles', action='store_true', default = False, help = 'output alleles')
 p.add_option('--pseudodip', action='store_true', default = False, help = 'create pseudodiploids from consecutive pairs of input samples (assumed haploid so exclude hets)')
 p.add_option('--haploid', action='store_true', default = False, help = 'haploid input calls')
 
 opt, args = p.parse_args()
+
+if opt.depthsonly:
+	opt.depths = True
+
 if opt.ratesonly:
 	opt.rates = True
 
@@ -143,18 +151,18 @@ if opt.callmask:
 		tok = line.split()
 		callmask[int(tok[1]) + 1] = int(tok[2])
 
-if opt.aims:
-	info('Reading sample population assignments from %s' % opt.aims)
+if opt.pops:
+	info('Reading sample population assignments from %s' % opt.pops)
 	samppop = {}
-	for line in open(opt.aims):
+	for line in open(opt.pops):
 		if line.startswith('#'):
 			continue
 		tok = line.split()
 		samppop[tok[0]] = tok[1]
-	#TODO: check all samples assigned
-	opt.vars = True
-	poplist = list(set(samppop.values()))
-	fout.write('\t'.join(['#chr', 'pos'] + poplist + ['AIM_pop']) + '\n')
+
+	if opt.aims:
+		opt.vars = True
+		fout.write('\t'.join(['#chr', 'pos'] + poplist + ['AIM_pop']) + '\n')
 
 #	for line in fin:
 #		if line.startswith('#'):
@@ -175,6 +183,30 @@ for line in fin:
 		tok = line.split()
 		nsamp = len(tok) - VCF_FIXEDCOLS
 		sampnames = tok[VCF_FIXEDCOLS:]
+		sampn = dict([(x[1], int(x[0])) for x in enumerate(sampnames)])
+
+		popsampnums = {}
+		if opt.pops: # fill poplist with pops actually present
+			poplist = []
+			for samp in sampnames:
+				if not samp in samppop: # look for matching prefix
+					warning('%s not found in %s' % (samp, opt.pops))
+					prefixes = [os.path.commonprefix([s, samp]) for s in samppop.keys()]
+					longpref = max(prefixes, key=len)
+					if len(longpref) > 6: #COMPLETELY ARBITRARY
+						match = samppop.keys()[prefixes.index(longpref)]
+						samppop[samp] = samppop[match]
+						warning('Using %s\t%s' % (match, samppop[match]))
+
+				if not samppop[samp] in poplist: # error if samp not in opt.pops
+					poplist.append(samppop[samp])
+					popsampnums[samppop[samp]] = []
+				popsampnums[samppop[samp]].append(sampn[samp])
+			fout.write('#VCF_POPULATIONS:\t%s\n' % ('\t'.join(poplist)))
+		else:
+			poplist = ['all_samples']
+			popsampnums['all_samples'] = range(nsamp)
+
 		if opt.condsamp:
 			for i, name in enumerate(sampnames):
 				if name.find(condsamp) >= 0:
@@ -187,9 +219,10 @@ if opt.header:
 	fout.write('\t'.join(['#SAMPLES'] + sampnames) + '\n')
 
 if opt.rates:
+	if opt.depths:
+		depcount = [0 for i in range(nsamp)]
 	hetcount = [0 for i in range(nsamp)]
 	hnrcount = [0 for i in range(nsamp)]
-	depcount = [0 for i in range(nsamp)]
 	nsites = 0
 	firstcoord = ''
 
@@ -232,12 +265,12 @@ for line in fin:
 	if opt.condsamp and not tok[condcol].startswith('0/1'): # condition on variant in cond_sample
 		continue
 
-	if opt.depths or opt.depths or opt.mediandep:
+	if opt.depths or opt.mediandep:
 		formats = tok[VCF_FIXEDCOLS - 1].split(':')
 		depfield = formats.index('DP')
 		dep = [x.split(':')[depfield] for x in tok[VCF_FIXEDCOLS:(VCF_FIXEDCOLS+nsamp)]]
 
-	if opt.depths:
+	if opt.depthsonly:
 		fout.write('\t'.join(tok[0:2] + dep) + '\n')
 		continue
 
@@ -280,15 +313,16 @@ for line in fin:
 #		fq = re.search('FQ=(-?[0-9.]+)', tok[7])
 #		if fq > 0: #het
 #		sys.stdout.write(line)
-	valstr = ''.join(varvals)
+	varvalstr = '-'.join(varvals)
 #	debug(valstr)
-	segsite = '0' in valstr and '1' in valstr
+	segsite = '0' in varvalstr and '1' in varvalstr
 
-	if opt.alleles:
+	if opt.alleles: # convert 0, 1 to alleles in output
 		sitealleles = [tok[3]] + tok[4].split(',')
 		trtab = maketrans(''.join([str(x) for x in range(len(sitealleles))]), ''.join(sitealleles))
 		varalleles = [x.translate(trtab) for x in varvals]  
 		varvals = varalleles  
+		varvalstr = '-'.join(varvals)
 		vargts = [x.translate(trtab) for x in vargts]  
 #		debug([tok[1], sitealleles, vargts])
 
@@ -367,12 +401,11 @@ for line in fin:
 					nN = 0
 		continue
 
-	outvals.append('-'.join(varvals))
-
 	if opt.rates:
-		hetcount = [hetcount[i] + (varvals[i] == '01') for i in range(nsamp)]
-		hnrcount = [hnrcount[i] + (varvals[i] == '11') for i in range(nsamp)]
-		depcount = [depcount[i] + int(dep[i]) for i in range(nsamp)]
+		if opt.depths:
+			depcount = [depcount[i] + int(dep[i]) for i in range(nsamps)]
+		hetcount = [hetcount[i] + (varvals[i] == '01') for i in range(nsamps)]
+		hnrcount = [hnrcount[i] + (varvals[i] == '11') for i in range(nsamps)]
 		nsites += 1
 		if not firstcoord:
 			firstcoord = ':'.join(tok[0:2])
@@ -386,18 +419,27 @@ for line in fin:
 #			outvals.append(str(depfield - 1))
 			outvals.append(str(int(segsite)))
 
-		if opt.diversity:
-			alfreq = eval(re.search('AF1=([0-9.e\-]+)', tok[7]).group(1))# eval since vcf uses sci notation
-			alcount = int(re.search('AC1=([0-9]+)', tok[7]).group(1))
-			neidiv = 1 - alfreq**2 - (1 - alfreq)**2
-			outvals += [str(nsamp), str(alfreq), str(neidiv), str(alcount), str(alcount/float(nsamp))]
+		for pop in poplist:
+			pvarvalstr = '-'.join([varvals[i] for i in popsampnums[pop]])
+			if not opt.no_calls:
+				outvals.append(pvarvalstr)
+
+			if opt.diversity:
+	#			alfreq = eval(re.search('AF1=([0-9.e\-]+)', tok[7]).group(1))# eval since vcf uses sci notation
+	#			alcount = int(re.search('AC1=([0-9]+)', tok[7]).group(1))
+	#			neidiv = 1 - alfreq**2 - (1 - alfreq)**2
+	#			outvals += [str(nsamp), str(alfreq), str(neidiv), str(alcount), str(alcount/float(nsamp))]
+				alcount = pvarvalstr.count('1')
+				pnsamp = len(popsampnums[pop])
+				outvals += [str(pnsamp), str(alcount), str(alcount/float(2 * pnsamp))]
 
 		fout.write('\t'.join(outvals) + '\n')
 
 if opt.rates:
 	fout.write('\t'.join(['#REGION'] + [firstcoord + '-' + lastcoord]) + '\n')
 	fout.write('\t'.join(['#NSITES'] + [str(nsites)]) + '\n')
-	fout.write('\t'.join(['#MEANDEP'] + [str(float(x)/nsites) for x in depcount]) + '\n')
+	if opt.depths:
+		fout.write('\t'.join(['#MEANDEP'] + [str(float(x)/nsites) for x in depcount]) + '\n')
 	fout.write('\t'.join(['#HETCOUNT'] + [str(x) for x in hetcount]) + '\n')
 	fout.write('\t'.join(['#HETRATE'] + [str(float(x)/nsites) for x in hetcount]) + '\n')
 	fout.write('\t'.join(['#HNRCOUNT'] + [str(x) for x in hnrcount]) + '\n')
