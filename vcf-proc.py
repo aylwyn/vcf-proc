@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Aylwyn Scally 2014
+# Aylwyn Scally 2012-2018
 #TODO: handle ./. output e.g. from vcf-merge
 
 import sys
@@ -97,6 +97,7 @@ p.add_option('--indels', action='store_true', default = False, help = 'include i
 p.add_option('--segsites', action='store_true', default = False, help = 'output segregating site flag')
 p.add_option('--mediandep', action='store_true', default = False, help = 'output median read depth')
 p.add_option('--diversity', action='store_true', default = False, help = 'output diversity statistics')
+p.add_option('--Fst', action='store_true', default = False, help = 'output Fst (Weir & Cockerham)')
 p.add_option('-c', '--condsamp', default = '', help = 'condition on het in sample CONDSAMP')
 p.add_option('--rates', action='store_true', default = False, help = 'output per-individual het and hom-non-ref rates')
 p.add_option('--ratesonly', action='store_true', default = False, help = 'as --rates; suppress per-site output')
@@ -193,7 +194,7 @@ for line in fin:
 					warning('%s not found in %s' % (samp, opt.pops))
 					prefixes = [os.path.commonprefix([s, samp]) for s in samppop.keys()]
 					longpref = max(prefixes, key=len)
-					if len(longpref) > 6: #COMPLETELY ARBITRARY
+					if len(longpref) > 6: #ARBITRARY HACK TO FIND BEST MATCHING SAMPLE
 						match = samppop.keys()[prefixes.index(longpref)]
 						samppop[samp] = samppop[match]
 						warning('Using %s\t%s' % (match, samppop[match]))
@@ -202,7 +203,6 @@ for line in fin:
 					poplist.append(samppop[samp])
 					popsampnums[samppop[samp]] = []
 				popsampnums[samppop[samp]].append(sampn[samp])
-			fout.write('#VCF_POPULATIONS:\t%s\n' % ('\t'.join(poplist)))
 		else:
 			poplist = ['all_samples']
 			popsampnums['all_samples'] = range(nsamp)
@@ -215,8 +215,6 @@ for line in fin:
 					break
 		break
 
-if opt.header:
-	fout.write('\t'.join(['#SAMPLES'] + sampnames) + '\n')
 
 if opt.rates:
 	if opt.depths:
@@ -228,6 +226,30 @@ if opt.rates:
 
 if opt.psmcfa:
 	faout = FastaStream(sys.stdout)
+
+#if opt.header:
+#	if opt.pops:
+#		fout.write('#VCF_POPULATIONS:\t%s\n' % ('\t'.join(poplist)))
+#	if not opt.no_calls:
+#		fout.write('\t'.join(['#SAMPLES'] + sampnames) + '\n')
+if opt.header: #column headers
+	header = []
+	header += ['CHR', 'POS']
+	if opt.depthsonly:
+		header += sampnames
+	if opt.aims:
+		header += ['***HEADER_INFO_TODO***']
+	if not opt.no_calls:
+		header += sampnames
+	if opt.segsites:
+		header += ['SEGSITE']
+	if opt.diversity:
+		for pop in poplist:
+			header += [pop + '_N', pop + '_AC', pop + '_AF']
+	if opt.Fst:
+		header += ['Fst']
+	fout.write('\t'.join(header) + '\n')
+
 
 curchr = ''
 for line in fin:
@@ -374,6 +396,7 @@ for line in fin:
 				fout.write('\t'.join(outvals + [str(sep)] + varvals) + '\n')
 			sep = 0
 		continue
+
 	elif opt.psmcfa:
 		if segsite:
 			pos = int(tok[1])
@@ -419,19 +442,35 @@ for line in fin:
 #			outvals.append(str(depfield - 1))
 			outvals.append(str(int(segsite)))
 
+		alcount_total = 0
+		samps_total = 0
+		Hs_mean = 0
 		for pop in poplist:
 			pvarvalstr = '-'.join([varvals[i] for i in popsampnums[pop]])
 			if not opt.no_calls:
 				outvals.append(pvarvalstr)
 
-			if opt.diversity:
+			if opt.diversity or opt.Fst:
 	#			alfreq = eval(re.search('AF1=([0-9.e\-]+)', tok[7]).group(1))# eval since vcf uses sci notation
 	#			alcount = int(re.search('AC1=([0-9]+)', tok[7]).group(1))
 	#			neidiv = 1 - alfreq**2 - (1 - alfreq)**2
 	#			outvals += [str(nsamp), str(alfreq), str(neidiv), str(alcount), str(alcount/float(nsamp))]
 				alcount = pvarvalstr.count('1')
 				pnsamp = len(popsampnums[pop])
-				outvals += [str(pnsamp), str(alcount), str(alcount/float(2 * pnsamp))]
+				pfreq = alcount/float(2 * pnsamp)
+				alcount_total += alcount
+				samps_total += pnsamp
+				Hs_mean += 2 * pfreq * (1 - pfreq)
+				if opt.diversity:
+					outvals += [str(pnsamp), str(alcount), str(pfreq)]
+
+		if opt.Fst:
+			Hs_mean = Hs_mean / len(poplist)
+			tfreq = alcount_total/float(2 * samps_total)
+			Ht = 2 * tfreq * (1 - tfreq)
+			Fst = (Ht - Hs_mean) / Ht
+#			outvals += [str(Hs_mean), str(Ht), str(Fst)]
+			outvals += [str(Fst)]
 
 		fout.write('\t'.join(outvals) + '\n')
 
