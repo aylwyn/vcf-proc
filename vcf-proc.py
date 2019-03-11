@@ -234,7 +234,7 @@ if opt.psmcfa:
 #		fout.write('\t'.join(['#SAMPLES'] + sampnames) + '\n')
 if opt.header: #column headers
 	header = []
-	header += ['CHR', 'POS']
+	header += ['CHR', 'POS', 'ID']
 	if opt.depthsonly:
 		header += sampnames
 	if opt.aims:
@@ -296,7 +296,7 @@ for line in fin:
 		fout.write('\t'.join(tok[0:2] + dep) + '\n')
 		continue
 
-	outvals = tok[0:2]
+	outvals = tok[0:3]
 
 	if opt.haploid:
 		if (tok[4] == "."):
@@ -485,3 +485,13 @@ if opt.rates:
 	fout.write('\t'.join(['#HNRRATE'] + [str(float(x)/nsites) for x in hnrcount]) + '\n')
 	fout.write('\t'.join(['#HNR/HET'] + [str(float(hnrcount[i])/hetcount[i]) for i in range(nsamp)]) + '\n')
 #	fout.write('\t'.join(outvals) + '\n')
+
+try:
+	sys.stdout.close()
+except:
+	pass
+try:
+	sys.stderr.close()
+except:
+	pass
+
