@@ -20,6 +20,7 @@ loglevel = logging.INFO
 VCF_FIXEDCOLS = 9
 PSMC_BINSIZE = 100
 PSMC_N_RATIO = 0.9
+sampsep = '-'
 
 #	fout.write('\t'.join([str(x) for x in args]) + '\n')
 
@@ -100,11 +101,13 @@ p.add_option('--diversity', action='store_true', default = False, help = 'output
 p.add_option('--Fst', action='store_true', default = False, help = 'output Fst (Weir & Cockerham)')
 p.add_option('-c', '--condsamp', default = '', help = 'condition on het in sample CONDSAMP')
 p.add_option('--rates', action='store_true', default = False, help = 'output per-individual het and hom-non-ref rates')
-p.add_option('--ratesonly', action='store_true', default = False, help = 'as --rates; suppress per-site output')
+p.add_option('--nosites', action='store_true', default = False, help = 'suppress per-site output')
 p.add_option('--vars', action='store_true', default = False, help = 'output variant sites only')
 p.add_option('--segsep', action='store_true', default = False, help = 'output seg site separations (e.g. for input to msmc)')
 p.add_option('--psmcfa', action='store_true', default = False, help = 'output psmcfa (for input to psmc; NOTE psmc only works for two chrs)')
-p.add_option('--replacecalls', default='', help = 'vcf.gz file of replacement records (e.g. phased SNP calls). NOTE: no checking is done to ensure samples match')
+p.add_option('--replacecalls', default='', help = 'replace calls at sites listed in REPLACECALLS, a vcf.gz file of replacement records (e.g. phased SNP calls). NOTE: no checking is done to ensure samples match')
+p.add_option('--risk', default='', help = 'calculate risk scores based on allele risk scores in RISK; format: chr, pos, rsID, allele, score; assumes additive model')
+p.add_option('--effect_dir', action='store_true', default= False, help = 'use only the risk score sign (+/- 1), not its magnitude')
 p.add_option('--callmask', default='', help = 'bed.gz file of uncallable regions')
 p.add_option('--pops', default='', help = 'file of sample population assignments (line format: sample pop)')
 p.add_option('--aims', action='store_true', default = False, help = 'output AIM sites (requires --pops)')
@@ -117,8 +120,8 @@ opt, args = p.parse_args()
 if opt.depthsonly:
 	opt.depths = True
 
-if opt.ratesonly:
-	opt.rates = True
+#if opt.ratesonly:
+#	opt.rates = True
 
 if opt.debug:
 	loglevel = logging.DEBUG
@@ -138,6 +141,20 @@ if opt.replacecalls:
 			continue
 		tok = line.split()
 		reprecord[tok[0]+tok[1]] = tok[VCF_FIXEDCOLS-1:]
+
+if opt.risk:
+	info('Reading risk rsIDs, alleles and scores from %s' % opt.risk)
+	SNPscore = {}
+	SNPallele = {}
+	for line in open(opt.risk):
+		if line.startswith('#'):
+			continue
+		tok = line.split()
+		SNPscore[tok[2]] = float(tok[4])
+		if opt.effect_dir:
+			SNPscore[tok[2]] /= abs(float(tok[4]))
+		SNPallele[tok[2]] = tok[3]
+	sampsep = '\t'
 
 if opt.callmask:
 	info('Reading uncallable regions from %s' % opt.callmask)
@@ -160,6 +177,7 @@ if opt.pops:
 			continue
 		tok = line.split()
 		samppop[tok[0]] = tok[1]
+
 
 	if opt.aims:
 		opt.vars = True
@@ -203,6 +221,7 @@ for line in fin:
 					poplist.append(samppop[samp])
 					popsampnums[samppop[samp]] = []
 				popsampnums[samppop[samp]].append(sampn[samp])
+
 		else:
 			poplist = ['all_samples']
 			popsampnums['all_samples'] = range(nsamp)
@@ -215,6 +234,8 @@ for line in fin:
 					break
 		break
 
+if opt.risk:
+	totalrisk = [0 for x in range(nsamp)]
 
 if opt.rates:
 	if opt.depths:
@@ -235,12 +256,16 @@ if opt.psmcfa:
 if opt.header: #column headers
 	header = []
 	header += ['CHR', 'POS', 'ID']
+	if opt.pops:# and opt.rename_samps: # add pop name to sample names in header
+		headsampnames = [samppop[x] + '_' + x for x in sampnames]
+	else:
+		headsampnames =  sampnames
 	if opt.depthsonly:
-		header += sampnames
+		header += headsampnames
 	if opt.aims:
 		header += ['***HEADER_INFO_TODO***']
 	if not opt.no_calls:
-		header += sampnames
+		header += headsampnames
 	if opt.segsites:
 		header += ['SEGSITE']
 	if opt.diversity:
@@ -323,6 +348,13 @@ for line in fin:
 			if hetsite:
 				continue
 
+	if opt.risk: # convert genotype to GRS
+		sitealleles = [tok[3]] + tok[4].split(',')
+		effectallele = str(sitealleles.index(SNPallele[tok[2]]))
+		varvals = [SNPscore[tok[2]] * (int(x[0] == effectallele) + int(x[1] == effectallele)) for x in varvals]
+		totalrisk = [x + y for (x, y) in zip(totalrisk, varvals)]
+		varvals = [str(x) for x in varvals]
+
 	if opt.pseudodip:
 # combine consecutive varvals elements into new varvals (assumes none are het)
 # TODO?: only check/exclude hets in consecutive pairs
@@ -347,6 +379,7 @@ for line in fin:
 		varvalstr = '-'.join(varvals)
 		vargts = [x.translate(trtab) for x in vargts]  
 #		debug([tok[1], sitealleles, vargts])
+
 
 	if opt.aims:
 		valpops = {}
@@ -434,7 +467,7 @@ for line in fin:
 			firstcoord = ':'.join(tok[0:2])
 		lastcoord = ':'.join(tok[0:2])
 
-	if not opt.ratesonly:
+	if not opt.nosites:
 		if opt.mediandep:
 			outvals.append('%d' % median(dep))
 
@@ -446,7 +479,7 @@ for line in fin:
 		samps_total = 0
 		Hs_mean = 0
 		for pop in poplist:
-			pvarvalstr = '-'.join([varvals[i] for i in popsampnums[pop]])
+			pvarvalstr = sampsep.join([varvals[i] for i in popsampnums[pop]])
 			if not opt.no_calls:
 				outvals.append(pvarvalstr)
 
@@ -485,6 +518,9 @@ if opt.rates:
 	fout.write('\t'.join(['#HNRRATE'] + [str(float(x)/nsites) for x in hnrcount]) + '\n')
 	fout.write('\t'.join(['#HNR/HET'] + [str(float(hnrcount[i])/hetcount[i]) for i in range(nsamp)]) + '\n')
 #	fout.write('\t'.join(outvals) + '\n')
+
+if opt.risk:
+	fout.write('\t'.join(['#TOTALRISK', '.', '.'] + [str(x) for x in totalrisk]) + '\n')
 
 try:
 	sys.stdout.close()
