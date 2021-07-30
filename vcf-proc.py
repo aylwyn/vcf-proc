@@ -255,7 +255,10 @@ if opt.psmcfa:
 #		fout.write('\t'.join(['#SAMPLES'] + sampnames) + '\n')
 if opt.header: #column headers
 	header = []
-	header += ['CHR', 'POS', 'ID']
+	if opt.rates:
+		header += ['#SAMPLES']
+	else:
+		header += ['CHR', 'POS', 'ID']
 	if opt.pops:# and opt.rename_samps: # add pop name to sample names in header
 		headsampnames = [samppop[x] + '_' + x for x in sampnames]
 	else:
@@ -268,9 +271,9 @@ if opt.header: #column headers
 		header += headsampnames
 	if opt.segsites:
 		header += ['SEGSITE']
-	if opt.diversity:
+	if opt.diversity: # needs --no_calls to line up with output
 		for pop in poplist:
-			header += [pop + '_N', pop + '_AC', pop + '_AF']
+			header += [pop + '_N', pop + '_AC', pop + '_AF', pop + '_HET']
 	if opt.Fst:
 		header += ['Fst']
 	fout.write('\t'.join(header) + '\n')
@@ -334,10 +337,12 @@ for line in fin:
 		if (tok[4] == "."):
 			varvals = ['00' for x in tok[VCF_FIXEDCOLS:(VCF_FIXEDCOLS+nsamp)]]
 			vargts = ['0/0' for x in tok[VCF_FIXEDCOLS:(VCF_FIXEDCOLS+nsamp)]]
+			hets = [0 for x in tok[VCF_FIXEDCOLS:(VCF_FIXEDCOLS+nsamp)]]
 			segsite = False
 		else:
 			varvals = [x[0] + x[2] for x in tok[VCF_FIXEDCOLS:(VCF_FIXEDCOLS+nsamp)]]
 			vargts = [x[0:3] for x in tok[VCF_FIXEDCOLS:(VCF_FIXEDCOLS+nsamp)]]
+			hets = [int(x[0] != x[2]) for x in tok[VCF_FIXEDCOLS:(VCF_FIXEDCOLS+nsamp)]]
 
 		if opt.pseudodip:
 			hetsite = False
@@ -459,9 +464,9 @@ for line in fin:
 
 	if opt.rates:
 		if opt.depths:
-			depcount = [depcount[i] + int(dep[i]) for i in range(nsamps)]
-		hetcount = [hetcount[i] + (varvals[i] == '01') for i in range(nsamps)]
-		hnrcount = [hnrcount[i] + (varvals[i] == '11') for i in range(nsamps)]
+			depcount = [depcount[i] + int(dep[i]) for i in range(nsamp)]
+		hetcount = [hetcount[i] + (varvals[i][0] != varvals[i][1]) for i in range(nsamp)]
+		hnrcount = [hnrcount[i] + (varvals[i] == '11') for i in range(nsamp)]
 		nsites += 1
 		if not firstcoord:
 			firstcoord = ':'.join(tok[0:2])
@@ -480,6 +485,7 @@ for line in fin:
 		Hs_mean = 0
 		for pop in poplist:
 			pvarvalstr = sampsep.join([varvals[i] for i in popsampnums[pop]])
+			phets = [hets[i] for i in popsampnums[pop]]
 			if not opt.no_calls:
 				outvals.append(pvarvalstr)
 
@@ -489,13 +495,14 @@ for line in fin:
 	#			neidiv = 1 - alfreq**2 - (1 - alfreq)**2
 	#			outvals += [str(nsamp), str(alfreq), str(neidiv), str(alcount), str(alcount/float(nsamp))]
 				alcount = pvarvalstr.count('1')
+				hetcount = sum(phets)
 				pnsamp = len(popsampnums[pop])
 				pfreq = alcount/float(2 * pnsamp)
 				alcount_total += alcount
 				samps_total += pnsamp
 				Hs_mean += 2 * pfreq * (1 - pfreq)
 				if opt.diversity:
-					outvals += [str(pnsamp), str(alcount), str(pfreq)]
+					outvals += [str(pnsamp), str(alcount), str(pfreq), str(hetcount)]
 
 		if opt.Fst:
 			Hs_mean = Hs_mean / len(poplist)
